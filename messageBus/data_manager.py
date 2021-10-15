@@ -3,6 +3,7 @@
 """
 import time
 import enum
+import copy
 
 from utils.log import LogHandler
 from drivers import pi_main
@@ -69,40 +70,13 @@ class DataManager:
         self.tcp_obj = tcpClient.TcpClient()
         # 开机时间
         self.start_time = time.time()
-        # 提示消息
-        # 罗盘角度
-        self.theta = None
-        # 船头角度
-        self.current_theta = None
-        # 偏差角度
-        self.theta_error = 0
-        # 罗盘提示消息
-        self.compass_notice_info = ''
-        # 记录pwm调节时间和数值用于在家调试
-        self.last_left_pwm = 1500
-        self.last_right_pwm = 1500
-        self.last_change_pwm_time = time.time()
-        # 记录船状态
-        self.ship_status = ShipStatus.idle
-        # 船手动控制提示信息
-        self.control_info = ''
-        # 记录上一次控制的单片机继电器状态
-        self.last_side_light = 0  # 舷灯
-        self.last_headlight = 0  # 大灯
-        self.last_audio_light = 0  # 声光报警器
-        self.last_status_light = 0  # 状态灯
-        self.last_drain = 0  # 0没有在排水 1 在排水
-        self.last_draw_steer = None  # 舵机状态
-        self.pi_main_obj = None
+        # 进入自稳时当前角度和深度
+        self.auto_theta_list = None
+        self.auto_deep = None
         if config.current_platform == config.CurrentPlatform.pi:
             self.pi_main_obj = pi_main.PiMain()
-        # 当前运动方向 -1 空闲 0 前 90左 180 后 270 右     10 北  190 西 1180 南  1270东
-        self.direction = -1
-        # 切换到任务状态前的状态
-        self.last_ship_status = ShipStatus.idle
-        # 是否已经初始化电机
-        self.is_init_motor = 0
-        # self.connect_uuv_server()
+        # 当前运动方向
+        self.direction = 0
 
     def connect_uuv_server(self):
         while True:
@@ -115,7 +89,6 @@ class DataManager:
 
     def send_stc_data(self, data):
         """
-
         :param data:
         :return:
         """
@@ -154,26 +127,50 @@ class DataManager:
         while True:
             time.sleep(0.1)
             self.control_info = ''
-            # 获取上位机发送的控制命令
-            self.direction = int(self.tcp_obj.move)
-            """
-            0：停止
-            1：前进
-            2：后退
-            3：左转
-            4：右转
-            5：上升
-            6：下降
-            7: 左移
-            8: 右移
-            """
-            self.control_info_dict = {0: ' 停止', 1: ' 前进', 2: ' 后退', 3: ' 左转', 4: ' 右转', 5: ' 上升', 6: ' 下降', 7: ' 左移',
-                                      8: ' 右移'}
-            if self.direction in self.control_info_dict:
-                self.control_info += self.control_info_dict[self.direction]
-            else:
-                self.control_info += '运动方向错误  '
-                self.control_info += self.direction
-            # print('self.control_info', self.control_info)
-            if not config.home_debug:
-                self.pi_main_obj.move(self.direction)
+            # 手动控制模式
+            if self.tcp_obj.mode == 0:
+                # 获取上位机发送的控制命令
+                if self.auto_deep is not None:
+                    self.auto_deep = None
+                if self.auto_theta_list is not None:
+                    self.auto_theta_list = None
+                self.direction = int(self.tcp_obj.move)
+                """
+                0：停止
+                1：前进
+                2：后退
+                3：左转
+                4：右转
+                5：上升
+                6：下降
+                7: 左移
+                8: 右移
+                """
+                self.control_info_dict = {0: ' 停止', 1: ' 前进', 2: ' 后退', 3: ' 左转', 4: ' 右转', 5: ' 上升', 6: ' 下降',
+                                          7: ' 左移',
+                                          8: ' 右移'}
+                if self.direction in self.control_info_dict:
+                    self.control_info += self.control_info_dict[self.direction]
+                else:
+                    self.control_info += '运动方向错误  '
+                    self.control_info += self.direction
+                # print('self.control_info', self.control_info)
+                if not config.home_debug:
+                    self.pi_main_obj.move(self.direction)
+            # 自稳模式
+            elif self.tcp_obj.mode == 1:
+                # 记录进入自稳时的角度和深度
+                if self.auto_deep is None:
+                    self.auto_deep = self.pi_main_obj.deep
+                if self.auto_theta_list is None:
+                    self.auto_theta_list = copy.deepcopy(self.pi_main_obj.theta_list)
+                # 判断当前偏差 执行控制
+                delta_deep = self.auto_deep - self.pi_main_obj.deep  # 深度偏差
+                delta_deep_pwm = self.path_track_obj.pid_pwm_deep(delta_deep)
+                delta_theta_x = self.auto_theta_list[0] - self.pi_main_obj.theta_list[0]  # x轴角度
+                delta_x_pwm = self.path_track_obj.pid_pwm_steer(delta_theta_x)  #
+                delta_theta_y = self.auto_theta_list[1] - self.pi_main_obj.theta_list[1]  # y轴角度
+                delta_y_pwm = self.path_track_obj.pid_pwm_steer(delta_theta_y)
+                delta_theta_z = self.auto_theta_list[2] - self.pi_main_obj.theta_list[2]  # z轴角度
+                delta_z_pwm = self.path_track_obj.pid_pwm_steer(delta_theta_z)
+                self.pi_main_obj.set_pwm()

@@ -16,17 +16,8 @@ class SimplePid:
         self.left_distance = None
         self.right_distance = None
         # 调节p数组
-        self.adjust_p_size = 10
+        self.adjust_p_size = 5
         self.adjust_p_list = []
-
-    def distance_p(self, distance, theta_error):
-        # motor_forward = int(config.motor_forward * (180-abs(theta_error))/(180*1.4))
-        motor_forward = int(config.motor_forward)
-        pwm = int((distance * (motor_forward / config.full_speed_meter)))
-        if pwm >= config.motor_forward:
-            pwm = config.motor_forward
-        pwm = int(pwm * (180 - abs(theta_error)) / 180)
-        return pwm
 
     def update_steer_pid(self, theta_error):
         errorSum = self.errorSum + theta_error
@@ -104,31 +95,14 @@ class SimplePid:
         right_pwm = 1500 + int(forward_pwm * scale_pwm) + int(steer_pwm * scale_pwm)
         return left_pwm, right_pwm
 
-    def pid_pwm_2(self, distance, theta_error):
+    def pid_pwm_deep(self, deep_error):
         # (1 / (1 + e ^ -0.2x) - 0.5) * 1000
-        steer_control = self.update_steer_pid_1(theta_error)
-        steer_pwm = (1.0 / (1.0 + e ** (-0.02 * steer_control)) - 0.5) * 1000
-        forward_pwm = (1.0 / (1.0 + e ** (-0.2 * distance)) - 0.5) * 1000
-        # 缩放到指定最大值范围内
-        max_control = config.max_pwm-config.stop_pwm
-        if forward_pwm+abs(steer_pwm) > max_control:
-            temp_forward_pwm = forward_pwm
-            forward_pwm = max_control*(temp_forward_pwm)/(temp_forward_pwm+abs(steer_pwm))
-            steer_pwm = max_control*(steer_pwm/(temp_forward_pwm+abs(steer_pwm)))
-        left_pwm = config.stop_pwm + int(forward_pwm) - int(steer_pwm)
-        right_pwm = config.stop_pwm + int(forward_pwm) + int(steer_pwm)
-        return left_pwm, right_pwm
+        deep_control = self.update_steer_pid_1(deep_error)
+        delta_deep_pwm = (1.0 / (1.0 + e ** (-2 * deep_control)) - 0.5) * 1000
+        return delta_deep_pwm
 
-    def pid_turn_pwm(self, angular_velocity_error):
-        steer_control = self.update_steer_pid_1(angular_velocity_error)
-        steer_pwm = (1.0 / (1.0 + e ** (-0.02 * steer_control)) - 0.5) * 1000
-        left_pwm = config.stop_pwm - int(steer_pwm)
-        right_pwm = config.stop_pwm + int(steer_pwm)
-        return left_pwm, right_pwm
+    def pid_pwm_steer(self, steer_error):
+        steer_control = self.update_steer_pid_1(steer_error)
+        delta_steer_pwm = (1.0 / (1.0 + e ** (-0.02 * steer_control)) - 0.5) * 1000
+        return delta_steer_pwm
 
-    def pid_angle_pwm(self, angle_error):
-        steer_control = self.update_steer_pid_1(angle_error)
-        steer_pwm = (1.0 / (1.0 + e ** (-0.02 * steer_control)) - 0.5) * 1000
-        left_pwm = config.stop_pwm - int(steer_pwm)
-        right_pwm = config.stop_pwm + int(steer_pwm)
-        return left_pwm, right_pwm

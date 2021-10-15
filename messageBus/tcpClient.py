@@ -80,11 +80,11 @@ class TcpClient:
                     pid_list = str(pid_find[0]).split(',')
                     for i, v in enumerate(pid_list):
                         self.pid_list[i] = float(v)
-                mode_find = re.findall(r'move(.?)z', data)
+                mode_find = re.findall(r'mode(.?)z', data)
                 if len(mode_find) > 0:
                     self.move = int(mode_find[0])
-                print('self.move ,self.camera,self.light,self.sonar,self.arm,self.pid ,self.move', self.move,
-                      self.camera, self.light, self.sonar, self.arm, self.pid_list, self.move)
+                print('self.move ,self.camera,self.light,self.sonar,self.arm,self.pid ,self.mode', self.move,
+                      self.camera, self.light, self.sonar, self.arm, self.pid_list, self.mode)
             except Exception as e:
                 print('error client recvive ', e)
             if not data:
